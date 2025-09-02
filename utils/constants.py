@@ -1,17 +1,52 @@
-import anndata as ad
-import pandas as pd
-import scanpy as sc
-import matplotlib.pyplot as plt
-import scvi
-from sklearn.metrics import confusion_matrix, precision_score, recall_score
-import os
-import re
+GENE_SELECT_INTERSECTION = "INTERSECTION"
+GENE_SELECT_UNION = "UNION"
+GENE_SELECT_PROTEIN_CODING = "PROTEIN_CODING"
+
+SUPERCTs = {'Astrocyte', 'Immune', 'Neuron', 'Oligodendrocyte', 'OPC', 'Others'}
 
 
-pd.set_option('display.max_columns', None)  # None means unlimited
-pd.set_option('display.max_rows', None)     # None means unlimited
+SUBCTs = {
+    'InhibNeuron': set(['Sst', 'Pvalb', 'Vip', 'Lamp5', 'Lamp5 Lhx6', 'Sncg', 'Chandelier', 'Pax6', 'Sst Chodl']),
+    'ExcitNeuron': set(['L2/3 IT', 'L5 IT', 'L4 IT', 'L6 IT', 'L6 CT', 'L6 IT Car3', 'L6b', 'L5/6 NP', 'L5 ET']),
+}
 
-adata = ad.read_h5ad("../output_TACA2/integration_with_prediction_37824663_37824655_max_epoch_200_25_21_datasets.h5ad")
+
+REFERENCE_CT2SUPERCT = {
+    '37824663':{
+        'nonregex':{
+                    'oligodendrocyte': 'Oligodendrocyte', 
+                    'neuron': 'Neuron', 
+                    'astrocyte': 'Astrocyte', 
+                    'oligodendrocyte precursor cell': 'OPC', 
+                    'central nervous system macrophage': 'Immune', 
+                    'fibroblast': 'Others', 
+                    'Bergmann glial cell': 'Others', 
+                    'choroid plexus epithelial cell': 'Others', 
+                    'ependymal cell': 'Others', 
+                    'endothelial cell':'Others', 
+                    'pericyte':'Others', 
+                    'leukocyte':'Immune', 
+                    'vascular associated smooth muscle cell': 'Others'
+        }          
+    },
+    '37824655':{
+        'nonregex':{
+                'oligodendrocyte': 'Oligodendrocyte', 
+                'microglial cell': 'Immune', 
+                'astrocyte of the cerebral cortex': 'Astrocyte', 
+                'oligodendrocyte precursor cell': 'OPC', 
+                'vascular leptomeningeal cell': 'Others', 
+                'cerebral cortex endothelial cell': 'Others',
+        },
+        'regex':{
+                r'.*neuron.*':'Neuron'
+                # r'.*interneuron.*':'Neuron',
+        }
+    }
+}
+
+
+
 
 
 NONREFERENCE_CT2SUPERCT = {
@@ -109,64 +144,56 @@ NONREFERENCE_CT2SUPERCT = {
     }
 }
 
-# test order (TODO)
-
-if 'regex' in NONREFERENCE_CT2SUPERCT:
-    for rex in NONREFERENCE_CT2SUPERCT['regex']:
-        adata.obs['Super_Celltype'] = adata.obs['Super_Celltype'].str.replace(rex, NONREFERENCE_CT2SUPERCT['regex'][rex], regex = True, flags=re.IGNORECASE)
-
-if 'nonregex' in NONREFERENCE_CT2SUPERCT:
-    adata.obs['Super_Celltype'].replace(NONREFERENCE_CT2SUPERCT['nonregex'], inplace = True)
 
 
 
-dir_TACA = '/home/xuj2/isilon/Cheng-Qiu/TACA'
-dir_data = '/home/xuj2/isilon/Cheng-Qiu/TACA2/Data'
-all_ds = [name for name in os.listdir(dir_data) if os.path.isdir(os.path.join(dir_data, name))]
-all_ds.remove('Template')
+# CT2SUBCT = {
+#     'nonregex':{
 
-nonreference_ds = [ds for ds in all_ds]
-nonreference_ds.remove('37824663')
-nonreference_ds.remove('37824655')
+#     }
+# }
 
 
 
-for ds in nonreference_ds:
-    print("========= Dataset {} =========".format(ds))
-    curr_adata = adata[adata.obs['Dataset'] == ds]
-    original_no_superct = (curr_adata.obs['Super_Celltype'] == '').all()
-    if not original_no_superct:
-        curr_label = list(set(curr_adata.obs['Super_Celltype']))
-        curr_label.sort()
-        curr_ps = precision_score(list(curr_adata.obs['Super_Celltype']), list(curr_adata.obs['C_scANVI']), labels=curr_label, average=None)
-        curr_rs = recall_score(list(curr_adata.obs['Super_Celltype']), list(curr_adata.obs['C_scANVI']), labels=curr_label, average=None)
-        curr_eval = pd.DataFrame({
-            "CellType": curr_label,
-            "PrecisionScore": list(curr_ps),
-            "RecallScore": list(curr_rs)
-        })
-        print("curr_precision_recall = ", curr_eval)
-        curr_compare = pd.crosstab(curr_adata.obs['Super_Celltype'], curr_adata.obs['C_scANVI'])
-        print("curr_compare = ", curr_compare)
-    else:
-        print("{} has no original label.".format(ds))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+BR_MAPPING = {
+    'Prefrontal cortex': 'Frontal lobe',
+    'Orbitofrontal cortex': 'Frontal lobe', 
+    'dorsolateral prefrontal cortex': 'Frontal lobe',
+    'occipital cortex': 'Occipital lobe',
+    'middle temporal gyrus': 'Temporal lobe',
+    'occipitotemporal cortex': 'Occipital lobe',
+    'cerebral cortex': 'Cerebral cortex',
+    'hippocampal formation': 'Limbic lobe',
+    'somatosensory cortex': 'Parietal lobe',
+    'BA9': 'Frontal lobe',
+    'substantia nigra pars compacta': 'Basal ganglia',
+    'BA4': 'Frontal lobe',
+    'cerebral nuclei': 'Basal ganglia',
+    'substantia nigra pars compacta (SNpc) of the midbrain': 'Basal ganglia',
+    'prefrontal cortex': 'Frontal lobe',
+    'entorhinal cortex': 'Temporal lobe',
+    'thalamic complex': 'Thalamus',
+    'midbrain': 'Midbrain',
+    'pons': 'Pons',
+    'Cerebellum': 'Cerebellum',
+    'cerebellum': 'Cerebellum',
+    'myelencephalon': 'Medulla',
+    'ALS motor cortex': 'Frontal lobe',
+    'hypothalamus': 'Hypothalamus',
+    'Anterior cingulate cortex': 'Limbic lobe',
+    'Primary visual cortex': 'Occipital lobe',
+    'Dorsolateral prefrontal cortex': 'Frontal lobe',
+    'Primary somatosensory cortex': 'Parietal lobe',
+    'Primary auditory cortex': 'Temporal lobe',
+    'Middle temporal gyrus': 'Temporal lobe',
+    'spinal cord': 'Spinal cord',
+    'Angular gyrus': 'Parietal lobe',
+    'cervical spinal cord white matter': 'Spinal cord',
+    'Primary motor cortex': 'Frontal lobe',
+    'White matter': 'Unspecified',
+    'Brodmann (1909) area 4': 'Frontal lobe',
+    'white matter of cerebellum': 'Cerebellum'
+}
 
 
 
